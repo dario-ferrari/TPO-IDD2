@@ -1,0 +1,29 @@
+{
+  "name": "service",
+  "version": "1.0.0",
+  "description": "TPO-IDD2",
+  "main": "index.js",
+  "scripts": {
+    "sonar": "node_modules/sonarqube-scanner/src/bin/sonar-scanner",
+    "start": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Dario Ferrari",
+  "license": "ISC",
+  "dependencies": {
+    "body-parser": "^1.13.3",
+    "cassandra-driver": "^4.6.4",
+    "eslint-plugin-jest": "^27.2.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.1",
+    "newrelic": "^10.6.2",
+    "pino": "^8.14.1",
+    "redis": "^4.6.7",
+    "sonar-scanner": "^3.1.0",
+    "sonarqube-scanner": "^3.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "3.0.1"
+  }
+}

@@ -10,12 +10,14 @@ const errorMiddleware = require('./src/middleware/ErrorMiddleware') //componente
 const app=express()
 const prueba = require('./src/routes/prueba')
 const error_handler = require('./src/routes/error_handler')
+const auth = require('./src/routes/auth')
 
 app.use(bodyParser.urlencoded({extended:true})) //análisis de datos codificados en url
 app.use(bodyParser.json())
 
 /**Rutas:*/
 app.use('/service', prueba)
+app.use('/service', auth)
 app.use('/service/error', error_handler)
 
 app.use(errorMiddleware.errorResponder)

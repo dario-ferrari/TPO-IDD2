@@ -13,6 +13,7 @@ const error_handler = require('./src/routes/error_handler')
 const auth = require('./src/routes/auth')
 const products = require('./src/routes/products')
 const users = require('./src/routes/users')
+const cart = require('./src/routes/cart')
 
 app.use(bodyParser.urlencoded({extended:true})) //análisis de datos codificados en url
 app.use(bodyParser.json())
@@ -22,6 +23,7 @@ app.use('/service', prueba)
 app.use('/service', auth)
 app.use('/service', products)
 app.use('/service', users)
+app.use('/service', cart)
 app.use('/service/error', error_handler)
 
 app.use(errorMiddleware.errorResponder)

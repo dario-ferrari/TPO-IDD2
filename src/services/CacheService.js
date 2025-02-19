@@ -6,16 +6,18 @@ class CacheService {
     /**
      * @param {*} config Es la config que viene por RO o por RW de REDIS 
      */
-    constructor(config, expire) {
+    constructor(config, expire, dbIndex = 0) {
         this.config = config
         this.expire = expire || null
         this.is_alive = true
+        this.dbIndex = dbIndex
     }
 
     async connect() {
         this.redis = new RedisConnect(this.config.string_connect)
         this.is_alive = await this.redis.connect()
         this.client = this.redis.getClient()
+        await this.client.select(this.dbIndex)
     }
 
     isReady() {

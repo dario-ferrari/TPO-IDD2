@@ -3,30 +3,25 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const CacheService = require('./CacheService');
+const MongoDBService = require('./MongoDBService');
 const config = require('../../config');
 const jwtConfig = require('../../config/common/jwt');
 
 class AuthService {
     constructor() {
         this.cacheService = new CacheService(config.redis.rw, config.redis.ttl);
-    }
-
-    async signup(username, password) {
-        const hashedPassword = await bcrypt.hash(password, 10);
-        const user = { username, password: hashedPassword };
-
-        //Guardamos usuario en Redis (puede mejorarse con Cassandra)
-        await this.cacheService.set(`user:${username}`, JSON.stringify(user));
-
-        return { message: "User registered successfully" };
+        this.mongoService = new MongoDBService();
+        this.collection = 'users';
     }
 
     async login(username, password) {
-        const user = await this.cacheService.get(`user:${username}`);
+        await this.mongoService.connecting();
+        const collection = this.mongoService.getCollection(this.collection);
+        
+        const user = await collection.findOne({ username });
         if (!user) throw new Error("User not found");
 
-        const parsedUser = JSON.parse(user);
-        const match = await bcrypt.compare(password, parsedUser.password);
+        const match = await bcrypt.compare(password, user.password);
         if (!match) throw new Error("Invalid credentials");
 
         //Generamos JWT

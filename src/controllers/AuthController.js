@@ -7,20 +7,9 @@ const AuthService = require('../services/AuthService');
 class AuthController {
     constructor() {
         this.authService = new AuthService();
-        this.signup = this.signup.bind(this);
         this.login = this.login.bind(this);
         this.session = this.session.bind(this);
         this.logout = this.logout.bind(this);
-    }
-
-    async signup(req, res) {
-        const { username, password } = req.body;
-        try {
-            const result = await this.authService.signup(username, password);
-            res.status(201).json(result);
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
     }
 
     async login(req, res) {

@@ -29,7 +29,7 @@ class ErrorMiddleware {
     }
     
     invalidPathHandler(req, res, next) {
-        res.redirect('/rutaerror')//redirige a --- en caso de ruta no válida.
+        res.status(404).json({ error: "Invalid path" })
     }
 }
 

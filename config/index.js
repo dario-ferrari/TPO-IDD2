@@ -13,5 +13,6 @@ allConfig.environment = env
 allConfig.server = require("./" + env + "/server")
 allConfig.redis = require("./"+ env + "/redis")
 allConfig.cassandra = require("./"+ env +"/cassandra")
+allConfig.mongodb = require("./"+ env +"/mongodb")
 
 module.exports = allConfig

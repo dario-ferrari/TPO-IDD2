@@ -11,6 +11,9 @@ const app=express()
 const prueba = require('./src/routes/prueba')
 const error_handler = require('./src/routes/error_handler')
 const auth = require('./src/routes/auth')
+const user = require('./src/routes/user')
+const cart = require("./src/routes/cart");
+const order = require("./src/routes/order");
 
 app.use(bodyParser.urlencoded({extended:true})) //análisis de datos codificados en url
 app.use(bodyParser.json())
@@ -18,6 +21,9 @@ app.use(bodyParser.json())
 /**Rutas:*/
 app.use('/service', prueba)
 app.use('/service', auth)
+app.use('/service', user)
+app.use("/cart", cart);
+app.use("/order", order);
 app.use('/service/error', error_handler)
 
 app.use(errorMiddleware.errorResponder)

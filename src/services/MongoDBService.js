@@ -5,10 +5,15 @@ const DatabaseException = require('./../exception/DatabaseException');
 const ErrorNomenclature = require("../exception/ErrorNomenclature");
 const Debugging = require('../util/Debugging');
 
+const Databases = {
+    USERS: 'usersdb',
+    BILLING: 'billingdb'
+};
+
 class MongoDBService {
-    constructor() {
+    constructor(database = Databases.USERS) {
         this.url = 'mongodb://localhost:27017';
-        this.dbName = 'usersdb';
+        this.dbName = database;
         this.client = null;
     }
 
@@ -34,4 +39,4 @@ class MongoDBService {
     }
 }
 
-module.exports = MongoDBService; 
+module.exports = { MongoDBService, Databases }; 

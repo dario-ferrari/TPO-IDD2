@@ -9,7 +9,7 @@ class ProductController {
 
     async createItem(req, res, next) {
         try {
-            const { id, name, description, price } = req.body;
+            const { id, name, description, price, image } = req.body;
 
             if (!id || !name || !description || !price) {
                 return res.status(400).json({
@@ -25,8 +25,8 @@ class ProductController {
                 });
             }
 
-            const query = 'INSERT INTO items (id, name, description, price) VALUES (?, ?, ?, ?)';
-            await this.cassandraService.execute(query, [id, name, description, priceInCents]);
+            const query = 'INSERT INTO items (id, name, description, price, image) VALUES (?, ?, ?, ?, ?)';
+            await this.cassandraService.execute(query, [id, name, description, priceInCents, image || null]);
 
             res.status(201).json({
                 message: 'Item creado exitosamente',
@@ -34,7 +34,8 @@ class ProductController {
                     id, 
                     name, 
                     description, 
-                    price: priceInCents / 100 // Devolver el precio en formato decimal
+                    price: priceInCents / 100,
+                    image: image || null
                 }
             });
         } catch (error) {
@@ -72,7 +73,7 @@ class ProductController {
     async updateItem(req, res, next) {
         try {
             const { id } = req.params;
-            const { name, description, price } = req.body;
+            const { name, description, price, image } = req.body;
 
             // Verificar si el producto existe
             const checkQuery = 'SELECT id FROM items WHERE id = ?';
@@ -106,6 +107,10 @@ class ProductController {
                 }
                 updates.push('price = ?');
                 params.push(priceInCents);
+            }
+            if (image !== undefined) { // Permitir establecer image a null
+                updates.push('image = ?');
+                params.push(image);
             }
 
             if (updates.length === 0) {

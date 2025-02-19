@@ -7,6 +7,8 @@ const api = express.Router();
 const productController = new ProductController();
 
 api.post('/items', productController.createItem.bind(productController));
+api.put('/items/:id', productController.updateItem.bind(productController));
+api.patch('/items/:id/price', productController.updatePrice.bind(productController));
 api.delete('/items/:id', productController.deleteItem.bind(productController));
 
 module.exports = api; 

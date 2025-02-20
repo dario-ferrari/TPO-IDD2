@@ -1,14 +1,17 @@
 'use strict';
 
 const { MongoDBService, Databases } = require('./MongoDBService');
+const DatabaseException = require('./../exception/DatabaseException');
+const ErrorNomenclature = require("../exception/ErrorNomenclature");
+const Debugging = require('../util/Debugging');
 
 const PaymentMethods = {
-    DEBITO: 'DEBITO',
-    CREDITO: 'CREDITO',
-    MERCADO_PAGO: 'MERCADO_PAGO'
+    CREDIT_CARD: 'credit_card',
+    DEBIT_CARD: 'debit_card',
+    CASH: 'cash'
 };
 
-const TAX_RATE = 0.21; // 21% de impuestos
+const TAX_RATE = 0.21; // 21% IVA
 
 class BillingService {
     constructor() {
@@ -24,8 +27,11 @@ class BillingService {
         const lastBill = await collection.findOne({}, { sort: { id: -1 } });
         const newId = (lastBill?.id || 0) + 1;
 
-        // Calcular impuestos
-        const taxAmount = (totalPrice * BigInt(Math.round(TAX_RATE * 100))) / 100n;
+        // Calcular impuestos con mayor precisión
+        // Convertimos la tasa de impuesto a BigInt con 4 decimales de precisión
+        const TAX_RATE_BIGINT = BigInt(Math.floor(TAX_RATE * 10000));
+        // Multiplicamos primero por la tasa y luego dividimos para mantener la precisión
+        const taxAmount = (totalPrice * TAX_RATE_BIGINT) / 10000n;
         const finalPrice = totalPrice + taxAmount;
 
         const bill = {

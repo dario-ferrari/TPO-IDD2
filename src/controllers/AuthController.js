@@ -7,38 +7,43 @@ const AuthService = require('../services/AuthService');
 class AuthController {
     constructor() {
         this.authService = new AuthService();
-        this.login = this.login.bind(this);
-        this.session = this.session.bind(this);
-        this.logout = this.logout.bind(this);
     }
 
-    async login(req, res) {
-        const { username, password } = req.body;
+    async login(req, res, next) {
         try {
+            console.log('Recibida petición de login:', req.body);
+            const { username, password } = req.body;
             const result = await this.authService.login(username, password);
             res.status(200).json(result);
         } catch (error) {
-            res.status(401).json({ error: error.message });
+            console.error('Error en login:', error);
+            next(error);
         }
     }
 
-    async session(req, res) {
-        const token = req.headers.authorization?.split(' ')[1];
+    async verifySession(req, res, next) {
         try {
+            const token = req.headers.authorization?.split(' ')[1];
+            if (!token) {
+                return res.status(401).json({ error: 'No token provided' });
+            }
             const result = await this.authService.verifySession(token);
             res.status(200).json(result);
         } catch (error) {
-            res.status(401).json({ error: error.message });
+            next(error);
         }
     }
 
-    async logout(req, res) {
-        const token = req.headers.authorization?.split(' ')[1];
+    async logout(req, res, next) {
         try {
+            const token = req.headers.authorization?.split(' ')[1];
+            if (!token) {
+                return res.status(401).json({ error: 'No token provided' });
+            }
             await this.authService.logout(token);
-            res.status(200).json({ message: "Logged out successfully" });
+            res.status(200).json({ message: 'Logout successful' });
         } catch (error) {
-            res.status(500).json({ error: error.message });
+            next(error);
         }
     }
 }

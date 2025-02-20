@@ -6,10 +6,18 @@ const dns = require("node:dns")
 class CassandraConnect {
     constructor(config) {
         this.config = config
+        this.client = null
     }
 
     async getClient() {
-        return new cassandra.Client(this.config)
+        if (!this.client) {
+            this.client = new cassandra.Client({
+                contactPoints: this.config.contactPoints,
+                localDataCenter: this.config.localDataCenter,
+                keyspace: this.config.keyspace
+            })
+        }
+        return this.client
     }
 
     concistencyLocalOne() {

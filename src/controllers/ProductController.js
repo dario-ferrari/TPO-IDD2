@@ -5,37 +5,33 @@ const CassandraService = require('../services/CassandraService');
 class ProductController {
     constructor() {
         this.cassandraService = new CassandraService();
+        this.tableName = 'products';
     }
 
     async createItem(req, res, next) {
         try {
-            const { id, name, description, price, image } = req.body;
+            const { name, description, price, image } = req.body;
 
-            if (!id || !name || !description || !price) {
-                return res.status(400).json({
-                    error: 'Se requieren id, name, description y price'
-                });
-            }
+            // Incrementar y obtener el nuevo ID
+            const updateCounter = 'UPDATE counters SET value = value + 1 WHERE name = ?';
+            await this.cassandraService.execute(updateCounter, ['product_id']);
+            
+            const getCounter = 'SELECT value FROM counters WHERE name = ?';
+            const counterResult = await this.cassandraService.execute(getCounter, ['product_id']);
+            const newId = counterResult[0].value.toString();
 
-            // Convertir precio a centavos (bigint)
-            const priceInCents = Math.round(parseFloat(price) * 100);
-            if (isNaN(priceInCents)) {
-                return res.status(400).json({
-                    error: 'El precio debe ser un número válido'
-                });
-            }
-
-            const query = 'INSERT INTO items (id, name, description, price, image) VALUES (?, ?, ?, ?, ?)';
-            await this.cassandraService.execute(query, [id, name, description, priceInCents, image || null]);
+            // Insertar nuevo producto
+            const insertQuery = `INSERT INTO ${this.tableName} (id, name, description, price, image) VALUES (?, ?, ?, ?, ?)`;
+            await this.cassandraService.execute(insertQuery, [parseInt(newId), name, description, price, image]);
 
             res.status(201).json({
-                message: 'Item creado exitosamente',
-                item: { 
-                    id, 
+                message: 'Producto creado exitosamente',
+                product: { 
+                    id: parseInt(newId), 
                     name, 
                     description, 
-                    price: priceInCents / 100,
-                    image: image || null
+                    price, 
+                    image 
                 }
             });
         } catch (error) {
@@ -48,7 +44,7 @@ class ProductController {
             const { id } = req.params;
 
             // Verificamos si el producto existe
-            const checkQuery = 'SELECT id FROM items WHERE id = ?';
+            const checkQuery = `SELECT id FROM ${this.tableName} WHERE id = ?`;
             await this.cassandraService.connecting();
             const result = await this.cassandraService.client.execute(checkQuery, [id], { prepare: true });
 
@@ -59,7 +55,7 @@ class ProductController {
             }
 
             // Si existe se elimina
-            const deleteQuery = 'DELETE FROM items WHERE id = ?';
+            const deleteQuery = `DELETE FROM ${this.tableName} WHERE id = ?`;
             await this.cassandraService.client.execute(deleteQuery, [id], { prepare: true });
 
             res.status(200).json({
@@ -76,7 +72,7 @@ class ProductController {
             const { name, description, price, image } = req.body;
 
             // Verificar si el producto existe
-            const checkQuery = 'SELECT id FROM items WHERE id = ?';
+            const checkQuery = `SELECT id FROM ${this.tableName} WHERE id = ?`;
             await this.cassandraService.connecting();
             const result = await this.cassandraService.client.execute(checkQuery, [id], { prepare: true });
 
@@ -120,7 +116,7 @@ class ProductController {
             }
 
             params.push(id);
-            const updateQuery = `UPDATE items SET ${updates.join(', ')} WHERE id = ?`;
+            const updateQuery = `UPDATE ${this.tableName} SET ${updates.join(', ')} WHERE id = ?`;
             await this.cassandraService.client.execute(updateQuery, params, { prepare: true });
 
             res.status(200).json({
@@ -150,7 +146,7 @@ class ProductController {
             }
 
             // Verificar si el producto existe
-            const checkQuery = 'SELECT id FROM items WHERE id = ?';
+            const checkQuery = `SELECT id FROM ${this.tableName} WHERE id = ?`;
             await this.cassandraService.connecting();
             const result = await this.cassandraService.client.execute(checkQuery, [id], { prepare: true });
 
@@ -161,7 +157,7 @@ class ProductController {
             }
 
             // Actualizar solo el precio
-            const updateQuery = 'UPDATE items SET price = ? WHERE id = ?';
+            const updateQuery = `UPDATE ${this.tableName} SET price = ? WHERE id = ?`;
             await this.cassandraService.client.execute(updateQuery, [priceInCents, id], { prepare: true });
 
             res.status(200).json({
@@ -169,6 +165,37 @@ class ProductController {
                 newPrice: priceInCents / 100
             });
         } catch (error) {
+            next(error);
+        }
+    }
+
+    async getProducts(req, res, next) {
+        try {
+            console.log('Iniciando getProducts...');
+            const query = `SELECT * FROM ${this.tableName}`;
+            console.log('Query a ejecutar:', query);
+
+            await this.cassandraService.connecting();
+            const result = await this.cassandraService.execute(query);
+            console.log('Resultados obtenidos:', result);
+
+            if (!result) {
+                console.log('No se encontraron productos');
+                return res.json([]);  // Devolver array vacío si no hay productos
+            }
+
+            const products = result.map(product => ({
+                id: product.id,
+                name: product.name,
+                description: product.description,
+                price: parseFloat(product.price),
+                image: product.image
+            }));
+
+            console.log('Productos procesados:', products);
+            res.json(products);
+        } catch (error) {
+            console.error('Error en getProducts:', error);
             next(error);
         }
     }

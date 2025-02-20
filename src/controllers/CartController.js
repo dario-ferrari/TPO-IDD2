@@ -11,17 +11,32 @@ class CartController {
 
     async addToCart(req, res, next) {
         try {
-            const { userId, productId } = req.body;
+            console.log('Token decodificado:', req.user);
+            const userId = req.user.userId; // Este es el _id de MongoDB
+            console.log('ID de usuario extraído:', userId);
             
-            if (!userId || !productId) {
-                return res.status(400).json({
-                    error: 'userId y productId son requeridos'
+            const { productId } = req.body;
+            
+            if (!userId) {
+                console.error('No se encontró userId en el token');
+                return res.status(401).json({
+                    error: 'Usuario no autenticado correctamente'
                 });
             }
 
+            if (!productId) {
+                return res.status(400).json({
+                    error: 'productId es requerido'
+                });
+            }
+
+            console.log(`Agregando producto ${productId} al carrito del usuario ${userId}`);
             const result = await this.cartService.addToCart(userId, productId);
+            console.log('Resultado de addToCart:', result);
+            
             res.status(200).json(result);
         } catch (error) {
+            console.error('Error en addToCart:', error);
             next(error);
         }
     }
@@ -45,17 +60,23 @@ class CartController {
 
     async getCart(req, res, next) {
         try {
-            const { userId } = req.params;
-            
+            console.log('Token decodificado:', req.user);
+            const userId = req.user.userId;
+            console.log('ID de usuario extraído:', userId);
+
             if (!userId) {
-                return res.status(400).json({
-                    error: 'userId es requerido'
+                console.error('No se encontró userId en el token');
+                return res.status(401).json({
+                    error: 'Usuario no autenticado correctamente'
                 });
             }
 
             const result = await this.cartService.getCart(userId);
+            console.log('Carrito obtenido:', result);
+            
             res.status(200).json(result);
         } catch (error) {
+            console.error('Error en getCart:', error);
             next(error);
         }
     }

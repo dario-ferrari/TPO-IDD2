@@ -4,6 +4,8 @@ const ErrorNomenclature = require('./../exception/ErrorNomenclature')
 const Debugging         = require('./../util/Debugging')
 const JwtEncoder        = require('./../util/JwtEncoder')
 const AuthException     = require('./../exception/AuthException')
+const jwt               = require('jsonwebtoken')
+const config            = require('../../config')
 
 const defaultMessage    = "Not Authorized"
 const defaultStatusCode = 401
@@ -11,43 +13,31 @@ const defaultStatusCode = 401
 // Valida autorización por headers.
 class AuthMiddleware {
 
-    validator(req, res, next) {
-
-        if (!req.headers.authorization) { //Si no posee autorización por headers se lanza excepción.
-            return next(new AuthException(
-                defaultMessage,
-                defaultStatusCode,
-                ErrorNomenclature.withOutAuthorizationHeader(),
-                __dirname + ":" + Debugging.getLine()))
-        }
-
-        const authHeader = req.headers.authorization
-        const token = authHeader.split(" ")[1]
-        /**Verifica JWT: */
+    verifyToken(req, res, next) {
         try {
-            const result = JwtEncoder.verify(token)
-            if (!result) {
-                return next(new AuthException(
-                    defaultMessage,
-                    defaultStatusCode,
-                    ErrorNomenclature.authError(),
-                    __dirname + ":" + Debugging.getLine()
-                ))
+            const bearerHeader = req.headers['authorization']
+            
+            if (!bearerHeader) {
+                return res.status(401).json({ error: 'Token no proporcionado' })
             }
-            
-            res.setHeader('X-Redis', false)
 
-            req.params.groupid = result.usr.group_id//
-            req.query.user_id = result.usr.user_id
-            req.query.region = result.usr.region
-            req.query.token = token
-            next()
+            const token = bearerHeader.split(' ')[1]
+            const decoded = jwt.verify(token, config.jwt.secret)
             
+            if (!decoded.userId) {
+                return res.status(401).json({ error: 'Token inválido - no contiene userId' })
+            }
+
+            // Agregar información del usuario decodificada a la request
+            req.user = decoded
+            console.log('Usuario autenticado:', decoded)
+            next()
         } catch (error) {
-            return res.status(defaultStatusCode).json({ error: defaultMessage })
+            console.error('Error en verificación de token:', error)
+            return res.status(401).json({ error: 'Token inválido' })
         }
     }
 
 }
 
-module.exports=AuthMiddleware
+module.exports = new AuthMiddleware()

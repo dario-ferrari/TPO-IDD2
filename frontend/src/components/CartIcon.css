@@ -1,0 +1,11 @@
+.cart-icon {
+    cursor: pointer;
+    padding: 8px;
+    border-radius: 50%;
+    background-color: #f8f9fa;
+    transition: background-color 0.2s;
+}
+
+.cart-icon:hover {
+    background-color: #e9ecef;
+} 

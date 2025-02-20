@@ -11,21 +11,15 @@ class ErrorMiddleware {
     }
       
     errorResponder(err, req, res, next) {
-        let statusCode = err.statusCode || 500//status http para la respuesta
-        console.error('class: ERROR MIDDLEWARE - Method: ERROR_Responder - Details -> ', err)
-        if (typeof err.errors === "undefined") { //si no tiene propiedad "errors" agrega info de error predeterminada
-            err = internalError(err)
-            let errors = []
-            errors.push(
-                transform({
-                    message:       err.message,
-                    code: err.internal_code || ErrorNomenclature.unknownError(),
-                    source:        err.file_line || __dirname + ":" + Debugging.getLine()
-                })
-            )
-            err.errors = errors
-        }
-        res.status(statusCode || 404).json({'errors': err.errors})//responde json con información del error
+        console.error('Error en middleware:', err);
+        
+        res.header('Content-Type', 'application/json');
+        
+        const status = err.status || 500;
+        res.status(status).json({
+            message: err.message,
+            stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        });
     }
     
     invalidPathHandler(req, res, next) {
@@ -47,7 +41,5 @@ function transform(input) {
     let errorTransformer = new ErrorTransform()
     return errorTransformer.transform(input)
 }
-
-
 
 module.exports = new ErrorMiddleware()

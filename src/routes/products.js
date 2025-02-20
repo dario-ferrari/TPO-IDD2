@@ -6,9 +6,16 @@ const api = express.Router();
 
 const productController = new ProductController();
 
-api.post('/items', productController.createItem.bind(productController));
-api.put('/items/:id', productController.updateItem.bind(productController));
-api.patch('/items/:id/price', productController.updatePrice.bind(productController));
-api.delete('/items/:id', productController.deleteItem.bind(productController));
+// Agregar un log middleware
+api.use((req, res, next) => {
+    console.log(`Ruta de productos accedida: ${req.method} ${req.path}`);
+    next();
+});
+
+api.get('/', productController.getProducts.bind(productController));
+api.post('/', productController.createItem.bind(productController));
+api.put('/:id', productController.updateItem.bind(productController));
+api.patch('/:id/price', productController.updatePrice.bind(productController));
+api.delete('/:id', productController.deleteItem.bind(productController));
 
 module.exports = api; 

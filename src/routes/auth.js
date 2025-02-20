@@ -2,13 +2,20 @@
 
 const express = require('express');
 const AuthController = require('../controllers/AuthController');
-const api = express.Router();
-
+const router = express.Router();
 const authController = new AuthController();
 
-api.post('/auth/signup', authController.signup);
-api.post('/auth/login', authController.login);
-api.get('/auth/session', authController.session);
-api.delete('/auth/logout', authController.logout);
+// Definir las rutas con sus respectivos callbacks
+router.post('/login', (req, res, next) => {
+    authController.login(req, res, next);
+});
 
-module.exports = api;
+router.post('/logout', (req, res, next) => {
+    authController.logout(req, res, next);
+});
+
+router.post('/verify', (req, res, next) => {
+    authController.verifySession(req, res, next);
+});
+
+module.exports = router;

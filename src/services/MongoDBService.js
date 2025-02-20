@@ -4,38 +4,52 @@ const { MongoClient } = require('mongodb');
 const DatabaseException = require('./../exception/DatabaseException');
 const ErrorNomenclature = require("../exception/ErrorNomenclature");
 const Debugging = require('../util/Debugging');
+const config = require('../../config');
 
 const Databases = {
-    USERS: 'usersdb',
-    BILLING: 'billingdb'
+    USERS: 'users',
+    BILLING: 'billing'
 };
 
 class MongoDBService {
     constructor(database = Databases.USERS) {
-        this.url = 'mongodb://localhost:27017';
-        this.dbName = database;
         this.client = null;
+        this.db = null;
+        this.dbName = database;
     }
 
     async connecting() {
         try {
-            if (!this.client) {
-                this.client = await MongoClient.connect(this.url);
-                this.db = this.client.db(this.dbName);
+            if (!this.client || !this.client.topology || !this.client.topology.isConnected()) {
+                this.client = new MongoClient(config.mongodb.url, config.mongodb.options);
+                await this.client.connect();
+                this.db = this.client.db(config.mongodb.database);
             }
             return true;
-        } catch(exception) {
-            throw new DatabaseException(
-                exception.message, 
-                500, 
-                ErrorNomenclature.errorMongoDB(), 
-                __dirname + ":" + Debugging.getLine()
-            );
+        } catch (error) {
+            console.error('Error connecting to MongoDB:', error);
+            throw error;
         }
     }
 
-    getCollection(name) {
-        return this.db.collection(name);
+    getCollection(collectionName) {
+        if (!this.db) {
+            throw new Error('Database connection not established');
+        }
+        return this.db.collection(collectionName);
+    }
+
+    async disconnect() {
+        try {
+            if (this.client && this.client.topology && this.client.topology.isConnected()) {
+                await this.client.close();
+                this.client = null;
+                this.db = null;
+            }
+        } catch (error) {
+            console.error('Error disconnecting from MongoDB:', error);
+            throw error;
+        }
     }
 }
 

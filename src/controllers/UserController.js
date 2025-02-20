@@ -1,6 +1,6 @@
 'use strict';
 
-const MongoDBService = require('../services/MongoDBService');
+const { MongoDBService, Databases } = require('../services/MongoDBService');
 const bcrypt = require('bcrypt');
 
 const UserCategories = {
@@ -17,7 +17,7 @@ const CATEGORY_LIMITS = {
 
 class UserController {
     constructor() {
-        this.mongoService = new MongoDBService();
+        this.mongoService = new MongoDBService(Databases.USERS);
         this.collection = 'users';
     }
 
@@ -119,7 +119,14 @@ class UserController {
 
     async checkUpgrade(req, res, next) {
         try {
-            const userId = parseInt(req.params.id);
+            // Corregir la obtención del ID del usuario - verificar múltiples fuentes
+            const userId = parseInt(req.params.userId) || parseInt(req.body.userId) || parseInt(req.params.id);
+            
+            if (isNaN(userId)) {
+                return res.status(400).json({
+                    error: 'ID de usuario inválido o no proporcionado'
+                });
+            }
 
             await this.mongoService.connecting();
             const collection = this.mongoService.getCollection(this.collection);

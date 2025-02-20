@@ -2,35 +2,64 @@
 
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const CacheService = require('./CacheService');
-const MongoDBService = require('./MongoDBService');
 const config = require('../../config');
+const CacheService = require('./CacheService');
+const { MongoDBService, Databases } = require('./MongoDBService');
 const jwtConfig = require('../../config/common/jwt');
 
 class AuthService {
     constructor() {
-        this.cacheService = new CacheService(config.redis.rw, config.redis.ttl);
-        this.mongoService = new MongoDBService();
+        this.cacheService = new CacheService(config.redis);
+        this.mongoService = new MongoDBService(Databases.USERS);
         this.collection = 'users';
     }
 
     async login(username, password) {
-        await this.mongoService.connecting();
-        const collection = this.mongoService.getCollection(this.collection);
-        
-        const user = await collection.findOne({ username });
-        if (!user) throw new Error("User not found");
+        try {
+            await this.mongoService.connecting();
+            const collection = this.mongoService.getCollection(this.collection);
+            
+            const user = await collection.findOne({ username });
+            if (!user) {
+                throw new Error('Usuario no encontrado');
+            }
 
-        const match = await bcrypt.compare(password, user.password);
-        if (!match) throw new Error("Invalid credentials");
+            const isValid = await bcrypt.compare(password, user.password);
+            if (!isValid) {
+                throw new Error('Contraseña incorrecta');
+            }
 
-        //Generamos JWT
-        const token = jwt.sign({ username }, jwtConfig.secret, { expiresIn: '1h' });
+            const token = jwt.sign(
+                { 
+                    userId: user._id.toString(),
+                    username: user.username,
+                    nombre: user.nombre,
+                    categoria: user.categoria
+                },
+                config.jwt.secret,
+                { expiresIn: '24h' }
+            );
 
-        //Guardamos el token en Redis
-        await this.cacheService.set(`session:${username}`, token, 3600);
+            try {
+                await this.cacheService.set(`token:${user._id}`, token, 86400);
+            } catch (error) {
+                console.error('Error al guardar en cache:', error);
+                // Continuamos aunque falle el cache
+            }
 
-        return { message: "Login successful", token };
+            return {
+                token,
+                user: {
+                    id: user._id,
+                    nombre: user.nombre,
+                    categoria: user.categoria
+                }
+            };
+        } catch (error) {
+            throw error;
+        } finally {
+            await this.mongoService.disconnect();
+        }
     }
 
     async verifySession(token) {

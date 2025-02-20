@@ -1,23 +1,31 @@
 'use strict'
 
-const RedisConnect = require('./../repository/redis/RedisConnect')
+const RedisConnect = require('../repository/redis/RedisConnect')
+const { createClient } = require('redis')
+const DatabaseException = require('../exception/DatabaseException')
+const ErrorNomenclature = require('../exception/ErrorNomenclature')
+const Debugging = require('../util/Debugging')
 
 class CacheService {
     /**
      * @param {*} config Es la config que viene por RO o por RW de REDIS 
      */
-    constructor(config, expire, dbIndex = 0) {
+    constructor(config, prefix = '', db = 0) {
         this.config = config
-        this.expire = expire || null
+        this.prefix = prefix
+        this.db = db  // Número de base de datos
         this.is_alive = true
-        this.dbIndex = dbIndex
+        this.client = null
     }
 
     async connect() {
-        this.redis = new RedisConnect(this.config.string_connect)
-        this.is_alive = await this.redis.connect()
-        this.client = this.redis.getClient()
-        await this.client.select(this.dbIndex)
+        if (!this.client) {
+            this.client = createClient({
+                ...this.config,
+                database: this.db  // Especifica la base de datos
+            })
+            await this.client.connect()
+        }
     }
 
     isReady() {
@@ -26,45 +34,47 @@ class CacheService {
 
     //Obtiene registro de Redis
     async get(key) {
-        await this.connect()
-        if (!this.is_alive) {
-            return null
+        try {
+            await this.connect()
+            const result = await this.client.get(key)
+            return result
+        } catch (error) {
+            throw new DatabaseException(error.message, 500, ErrorNomenclature.errorRedis(), __dirname + ":" + Debugging.getLine())
         }
-        const result = await this.client.get(key)
-        await this.disconnect()
-        return result
     }
 
     //Agrega llave-valor a Redis
-    async set(key, value) {
-        await this.connect()
-        if (!this.is_alive) {
-            return null
+    async set(key, value, expireTime = null) {
+        try {
+            await this.connect()
+            await this.client.set(key, value)
+            if (expireTime) {
+                await this.client.expire(key, parseInt(expireTime))
+            }
+            return true
+        } catch (error) {
+            throw new DatabaseException(error.message, 500, ErrorNomenclature.errorRedis(), __dirname + ":" + Debugging.getLine())
         }
-        await this.client.set(key, value)
-        await this.client.expire(key, this.expire)
-        await this.disconnect()
-        return true
     }
 
     //Elimina de Redis usando key
     async del(key) {
-        await this.connect()
-        if (!this.is_alive) {
-            return null
+        try {
+            await this.connect()
+            await this.client.del(key)
+            return true
+        } catch (error) {
+            throw new DatabaseException(error.message, 500, ErrorNomenclature.errorRedis(), __dirname + ":" + Debugging.getLine())
         }
-        await this.client.del(key)
-        await this.disconnect()
-        return true
     }
 
     //Establece desconexión de db
     async disconnect() {
-        if (this.is_alive) {
+        if (this.client && this.client.isOpen) {
             await this.client.disconnect()
-            return true
+            this.client = null
         }
-        return false
+        return true
     }
 
 

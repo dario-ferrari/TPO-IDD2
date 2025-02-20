@@ -19,7 +19,7 @@ class BillingService {
         this.collection = 'bills';
     }
 
-    async createBill(userId, productList, totalPrice, paymentMethod) {
+    async createBill(userId, productList, subtotal, paymentMethod) {
         try {
             await this.mongoService.connecting();
             const collection = this.mongoService.getCollection(this.collection);
@@ -29,10 +29,9 @@ class BillingService {
                 throw new Error(`Método de pago inválido: ${paymentMethod}`);
             }
 
-            // Calcular impuestos
-            const subtotalBigInt = BigInt(Math.round(totalPrice * 100));
-            const taxAmountBigInt = (subtotalBigInt * BigInt(Math.floor(TAX_RATE * 100))) / BigInt(100);
-            const finalPriceBigInt = subtotalBigInt + taxAmountBigInt;
+            // Calcular impuestos y total
+            const taxAmount = subtotal * TAX_RATE;
+            const totalPrice = subtotal + taxAmount;
 
             const bill = {
                 userId: userId,
@@ -42,9 +41,9 @@ class BillingService {
                     price: product.price.toString(),
                     quantity: product.quantity
                 })),
-                subtotal: (subtotalBigInt / BigInt(100)).toString(),
-                taxes: (taxAmountBigInt / BigInt(100)).toString(),
-                totalPrice: (finalPriceBigInt / BigInt(100)).toString(),
+                subtotal: subtotal.toFixed(2),
+                taxes: taxAmount.toFixed(2),
+                totalPrice: totalPrice.toFixed(2),
                 paymentMethod,
                 date: new Date()
             };

@@ -165,7 +165,6 @@ class CartService {
             // Formatear el carrito para la factura
             const formattedCart = await this.formatCart(userId, cartItems);
             
-            // Asegurarse de que los productos incluyan su ID
             const productsWithIds = formattedCart.items.map(item => ({
                 _id: item.productId,
                 name: item.name,
@@ -173,8 +172,9 @@ class CartService {
                 quantity: item.quantity
             }));
 
-            // Calcular totales
-            const subtotal = formattedCart.total;
+            // Calcular el subtotal correctamente
+            const subtotal = formattedCart.items.reduce((sum, item) => 
+                sum + (parseFloat(item.price) * item.quantity), 0);
             const taxes = subtotal * TAX_RATE;
             const totalPrice = subtotal + taxes;
 
@@ -182,7 +182,7 @@ class CartService {
             const bill = await this.billingService.createBill(
                 userId,
                 productsWithIds,
-                totalPrice,
+                subtotal,
                 paymentMethod
             );
 

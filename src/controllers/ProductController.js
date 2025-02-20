@@ -69,7 +69,7 @@ class ProductController {
     async updateItem(req, res, next) {
         try {
             const { id } = req.params;
-            const { name, description, price, image } = req.body;
+            const { name, description, image } = req.body;
 
             // Verificar si el producto existe
             const checkQuery = `SELECT id FROM ${this.tableName} WHERE id = ?`;
@@ -93,16 +93,6 @@ class ProductController {
             if (description) {
                 updates.push('description = ?');
                 params.push(description);
-            }
-            if (price) {
-                const priceInCents = Math.round(parseFloat(price) * 100);
-                if (isNaN(priceInCents)) {
-                    return res.status(400).json({
-                        error: 'El precio debe ser un número válido'
-                    });
-                }
-                updates.push('price = ?');
-                params.push(priceInCents);
             }
             if (image !== undefined) { // Permitir establecer image a null
                 updates.push('image = ?');
@@ -174,23 +164,23 @@ class ProductController {
                 [
                     parseInt(id),
                     timestamp,
-                    parseFloat(oldPriceInCents) / 100, // Convertir de centavos a decimal
-                    parseFloat(priceInCents) / 100     // Convertir de centavos a decimal
+                    parseFloat(oldPriceInCents),
+                    parseFloat(price)
                 ],
                 { prepare: true }
             );
 
             console.log(`Registro de cambio de precio guardado - Producto ID: ${id}`);
-            console.log(`Precio anterior: $${(oldPriceInCents/100).toFixed(2)} -> Nuevo precio: $${(priceInCents/100).toFixed(2)}`);
+            console.log(`Precio anterior: $${parseFloat(oldPriceInCents).toFixed(2)} -> Nuevo precio: $${parseFloat(price).toFixed(2)}`);
 
             // Actualizar el precio del producto
             const updateQuery = `UPDATE ${this.tableName} SET price = ? WHERE id = ?`;
-            await this.cassandraService.client.execute(updateQuery, [priceInCents, id], { prepare: true });
+            await this.cassandraService.client.execute(updateQuery, [parseFloat(price), id], { prepare: true });
 
             res.status(200).json({
                 message: 'Precio actualizado exitosamente',
-                oldPrice: oldPriceInCents / 100,
-                newPrice: priceInCents / 100,
+                oldPrice: parseFloat(oldPriceInCents),
+                newPrice: parseFloat(price),
                 timestamp: timestamp
             });
         } catch (error) {

@@ -145,8 +145,8 @@ class ProductController {
                 });
             }
 
-            // Verificar si el producto existe
-            const checkQuery = `SELECT id FROM ${this.tableName} WHERE id = ?`;
+            // Verificar si el producto existe y obtener el precio actual
+            const checkQuery = `SELECT id, price FROM ${this.tableName} WHERE id = ?`;
             await this.cassandraService.connecting();
             const result = await this.cassandraService.client.execute(checkQuery, [id], { prepare: true });
 
@@ -156,15 +156,45 @@ class ProductController {
                 });
             }
 
-            // Actualizar solo el precio
+            const oldPriceInCents = result.rows[0].price;
+
+            // Registrar el cambio de precio
+            const recordPriceChangeQuery = `
+                INSERT INTO price_changes (
+                    product_id,
+                    change_timestamp,
+                    old_price,
+                    new_price
+                ) VALUES (?, ?, ?, ?)
+            `;
+
+            const timestamp = new Date();
+            await this.cassandraService.client.execute(
+                recordPriceChangeQuery,
+                [
+                    parseInt(id),
+                    timestamp,
+                    parseFloat(oldPriceInCents) / 100, // Convertir de centavos a decimal
+                    parseFloat(priceInCents) / 100     // Convertir de centavos a decimal
+                ],
+                { prepare: true }
+            );
+
+            console.log(`Registro de cambio de precio guardado - Producto ID: ${id}`);
+            console.log(`Precio anterior: $${(oldPriceInCents/100).toFixed(2)} -> Nuevo precio: $${(priceInCents/100).toFixed(2)}`);
+
+            // Actualizar el precio del producto
             const updateQuery = `UPDATE ${this.tableName} SET price = ? WHERE id = ?`;
             await this.cassandraService.client.execute(updateQuery, [priceInCents, id], { prepare: true });
 
             res.status(200).json({
                 message: 'Precio actualizado exitosamente',
-                newPrice: priceInCents / 100
+                oldPrice: oldPriceInCents / 100,
+                newPrice: priceInCents / 100,
+                timestamp: timestamp
             });
         } catch (error) {
+            console.error('Error al actualizar precio:', error);
             next(error);
         }
     }

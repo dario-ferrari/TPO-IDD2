@@ -1,13 +1,13 @@
 'use strict';
 
-const CacheService = require('./CacheService');
+const RedisService = require('./RedisService');
 const CassandraService = require('./CassandraService');
 const { BillingService, PaymentMethods, TAX_RATE } = require('./BillingService');
 const config = require('../../config');
 
 class CartService {
     constructor() {
-        this.cacheService = new CacheService();
+        this.redisService = new RedisService();
         this.cassandraService = new CassandraService();
         this.billingService = new BillingService();
     }
@@ -15,7 +15,7 @@ class CartService {
     async addToCart(userId, productId) {
         try {
             console.log(`CartService: Agregando producto ${productId} al carrito del usuario ${userId}`);
-            
+
             // Verificar que el producto existe
             const query = 'SELECT * FROM products WHERE id = ?';
             const products = await this.cassandraService.execute(query, [parseInt(productId)]);
@@ -23,29 +23,29 @@ class CartService {
             if (!products || products.length === 0) {
                 throw new Error('Producto no encontrado');
             }
-            
+
             const product = products[0];
             console.log('Producto encontrado:', product);
 
             // Obtener el carrito actual
             const cartKey = `cart:${userId}`;
-            await this.cacheService.connect();
+            await this.redisService.connect();
 
             // Estructura del carrito en Redis: hash con productId como campo y cantidad como valor
-            let currentQuantity = await this.cacheService.client.hGet(cartKey, productId.toString()) || 0;
+            let currentQuantity = await this.redisService.client.hget(cartKey, productId.toString()) || '0';
             currentQuantity = parseInt(currentQuantity);
             
             // Incrementar la cantidad
-            await this.cacheService.client.hSet(cartKey, productId.toString(), (currentQuantity + 1).toString());
+            await this.redisService.client.hset(cartKey, productId.toString(), (currentQuantity + 1).toString());
             
             // Obtener todo el carrito actualizado
-            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const cartItems = await this.redisService.client.hgetall(cartKey) || {};
             console.log('Carrito actualizado:', cartItems);
 
             // Convertir el carrito a un formato más útil
             const formattedCart = await this.formatCart(userId, cartItems);
             
-            await this.cacheService.disconnect();
+            await this.redisService.disconnect();
             return formattedCart;
         } catch (error) {
             console.error('Error en addToCart:', error);
@@ -80,20 +80,20 @@ class CartService {
 
     async removeFromCart(userId, productId) {
         const cartKey = `cart:${userId}`;
-        await this.cacheService.connect();
+        await this.redisService.connect();
 
         // Verificar si el carrito existe
-        const cartExists = await this.cacheService.client.exists(cartKey);
+        const cartExists = await this.redisService.client.exists(cartKey);
         if (!cartExists) {
             throw new Error('Carrito no encontrado');
         }
 
         // Remover una instancia del producto
-        await this.cacheService.client.hDel(cartKey, productId);
+        await this.redisService.client.hDel(cartKey, productId);
 
         // Obtener el carrito actualizado
-        const cartItems = await this.cacheService.client.hGetAll(cartKey);
-        await this.cacheService.disconnect();
+        const cartItems = await this.redisService.client.hGetAll(cartKey);
+        await this.redisService.disconnect();
 
         return {
             userId,
@@ -112,57 +112,34 @@ class CartService {
 
             console.log('Obteniendo carrito para usuario:', userId);
             const cartKey = `cart:${userId}`;
-            await this.cacheService.connect();
+            await this.redisService.connect();
 
-            const cartExists = await this.cacheService.client.exists(cartKey);
+            const cartExists = await this.redisService.client.exists(cartKey);
             if (!cartExists) {
                 console.log('No existe carrito para el usuario:', userId);
-                await this.cacheService.disconnect();
+                await this.redisService.disconnect();
                 return { 
                     userId, 
                     items: [],
-                    message: 'No tienes productos en tu carrito' 
+                    message: 'No tenés productos en tu carrito' 
                 };
             }
 
-            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const cartItems = await this.redisService.client.hgetall(cartKey) || {};
             console.log('Items en Redis:', cartItems);
 
             if (!Object.keys(cartItems).length) {
-                await this.cacheService.disconnect();
+                await this.redisService.disconnect();
                 return { 
                     userId, 
                     items: [],
-                    message: 'Tu carrito está vacío' 
+                    message: 'El carrito está vacío' 
                 };
             }
 
-            // Obtener detalles de los productos
-            const items = [];
-            for (const [productId, quantity] of Object.entries(cartItems)) {
-                const query = 'SELECT * FROM products WHERE id = ?';
-                const products = await this.cassandraService.execute(query, [parseInt(productId)]);
-                
-                if (products && products.length > 0) {
-                    const product = products[0];
-                    items.push({
-                        productId: parseInt(productId),
-                        quantity: parseInt(quantity),
-                        name: product.name,
-                        description: product.description,
-                        price: parseFloat(product.price),
-                        image: product.image
-                    });
-                }
-            }
-
-            console.log('Items procesados:', items);
-            await this.cacheService.disconnect();
-
-            return {
-                userId,
-                items
-            };
+            const formattedCart = await this.formatCart(userId, cartItems);
+            await this.redisService.disconnect();
+            return formattedCart;
         } catch (error) {
             console.error('Error en getCart:', error);
             throw error;
@@ -170,88 +147,70 @@ class CartService {
     }
 
     async checkoutCart(userId, paymentMethod) {
-        if (!this.billingService.isValidPaymentMethod(paymentMethod)) {
-            throw new Error('Método de pago inválido');
+        try {
+            // Validar método de pago
+            if (!Object.values(PaymentMethods).includes(paymentMethod)) {
+                throw new Error('Método de pago inválido');
+            }
+
+            // Obtener el carrito actual
+            const cartKey = `cart:${userId}`;
+            await this.redisService.connect();
+            
+            const cartItems = await this.redisService.client.hgetall(cartKey);
+            if (!cartItems || Object.keys(cartItems).length === 0) {
+                throw new Error('El carrito está vacío');
+            }
+
+            // Formatear el carrito para la factura
+            const formattedCart = await this.formatCart(userId, cartItems);
+            
+            // Asegurarse de que los productos incluyan su ID
+            const productsWithIds = formattedCart.items.map(item => ({
+                _id: item.productId,
+                name: item.name,
+                price: item.price.toString(),
+                quantity: item.quantity
+            }));
+
+            // Calcular totales
+            const subtotal = formattedCart.total;
+            const taxes = subtotal * TAX_RATE;
+            const totalPrice = subtotal + taxes;
+
+            // Crear la factura
+            const bill = await this.billingService.createBill(
+                userId,
+                productsWithIds,
+                totalPrice,
+                paymentMethod
+            );
+
+            // Limpiar el carrito después de la compra exitosa
+            await this.redisService.client.del(cartKey);
+            
+            await this.redisService.disconnect();
+            return bill;
+        } catch (error) {
+            console.error('Error en checkoutCart:', error);
+            throw error;
         }
-
-        // Obtener el carrito
-        const cartKey = `cart:${userId}`;
-        await this.cacheService.connect();
-        const cartItems = await this.cacheService.client.hGetAll(cartKey);
-        
-        if (!Object.keys(cartItems).length) {
-            throw new Error('Carrito vacío');
-        }
-
-        // Obtener información del usuario
-        const query = 'SELECT * FROM users WHERE id = ?';
-        const users = await this.cassandraService.execute(query, [parseInt(userId)]);
-        
-        if (!users || users.length === 0) {
-            throw new Error('Usuario no encontrado');
-        }
-
-        const user = users[0];
-
-        // Obtener información de productos y calcular total
-        const products = await this.cassandraService.execute('SELECT * FROM products WHERE id IN ?', [Object.keys(cartItems).map(id => parseInt(id))]);
-        let subtotalInCents = 0n;
-        const productDetails = [];
-
-        for (const product of products) {
-            const quantity = parseInt(cartItems[product.id.toString()]);
-            subtotalInCents += BigInt(product.price) * BigInt(quantity);
-            productDetails.push({
-                id: product.id,
-                name: product.name,
-                price: product.price
-            });
-        }
-
-        // Calcular impuestos y total
-        const taxAmountInCents = (subtotalInCents * BigInt(Math.round(TAX_RATE * 100))) / 100n;
-        const totalPriceInCents = subtotalInCents + taxAmountInCents;
-
-        // Crear factura
-        const bill = await this.billingService.createBill(
-            user.username,
-            productDetails,
-            subtotalInCents,
-            paymentMethod
-        );
-
-        // Actualizar cantidadGastos del usuario con el total (incluyendo impuestos)
-        const currentGastos = user.cantidadGastos ? BigInt(user.cantidadGastos) : 0n;
-        const newGastos = currentGastos + totalPriceInCents;
-        await this.cassandraService.execute('UPDATE users SET cantidadGastos = ? WHERE id = ?', [newGastos.toString(), parseInt(userId)]);
-
-        // Eliminar carrito
-        await this.cacheService.client.del(cartKey);
-        await this.cacheService.disconnect();
-
-        return {
-            billId: bill.id,
-            subtotal: Number(subtotalInCents) / 100,
-            taxes: Number(taxAmountInCents) / 100,
-            total: Number(totalPriceInCents) / 100,
-            productCount: productDetails.length
-        };
     }
 
     async incrementItem(userId, productId) {
         try {
             const cartKey = `cart:${userId}`;
-            await this.cacheService.connect();
+            await this.redisService.connect();
             
-            let currentQuantity = await this.cacheService.client.hGet(cartKey, productId.toString()) || 0;
+            let currentQuantity = await this.redisService.client.hget(cartKey, productId.toString()) || '0';
             currentQuantity = parseInt(currentQuantity);
             
-            await this.cacheService.client.hSet(cartKey, productId.toString(), (currentQuantity + 1).toString());
+            await this.redisService.client.hset(cartKey, productId.toString(), (currentQuantity + 1).toString());
             
-            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const cartItems = await this.redisService.client.hgetall(cartKey);
             const formattedCart = await this.formatCart(userId, cartItems);
             
-            await this.cacheService.disconnect();
+            await this.redisService.disconnect();
             return formattedCart;
         } catch (error) {
             console.error('Error en incrementItem:', error);
@@ -262,21 +221,21 @@ class CartService {
     async decrementItem(userId, productId) {
         try {
             const cartKey = `cart:${userId}`;
-            await this.cacheService.connect();
+            await this.redisService.connect();
             
-            let currentQuantity = await this.cacheService.client.hGet(cartKey, productId.toString()) || 0;
+            let currentQuantity = await this.redisService.client.hget(cartKey, productId.toString()) || '0';
             currentQuantity = parseInt(currentQuantity);
             
             if (currentQuantity <= 1) {
-                await this.cacheService.client.hDel(cartKey, productId.toString());
+                await this.redisService.client.hdel(cartKey, productId.toString());
             } else {
-                await this.cacheService.client.hSet(cartKey, productId.toString(), (currentQuantity - 1).toString());
+                await this.redisService.client.hset(cartKey, productId.toString(), (currentQuantity - 1).toString());
             }
             
-            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const cartItems = await this.redisService.client.hgetall(cartKey);
             const formattedCart = await this.formatCart(userId, cartItems);
             
-            await this.cacheService.disconnect();
+            await this.redisService.disconnect();
             return formattedCart;
         } catch (error) {
             console.error('Error en decrementItem:', error);
@@ -287,14 +246,14 @@ class CartService {
     async removeAllItems(userId, productId) {
         try {
             const cartKey = `cart:${userId}`;
-            await this.cacheService.connect();
+            await this.redisService.connect();
             
-            await this.cacheService.client.hDel(cartKey, productId.toString());
+            await this.redisService.client.hdel(cartKey, productId.toString());
             
-            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const cartItems = await this.redisService.client.hgetall(cartKey);
             const formattedCart = await this.formatCart(userId, cartItems);
             
-            await this.cacheService.disconnect();
+            await this.redisService.disconnect();
             return formattedCart;
         } catch (error) {
             console.error('Error en removeAllItems:', error);

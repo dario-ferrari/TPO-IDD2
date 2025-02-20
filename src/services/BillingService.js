@@ -6,9 +6,9 @@ const ErrorNomenclature = require("../exception/ErrorNomenclature");
 const Debugging = require('../util/Debugging');
 
 const PaymentMethods = {
-    CREDIT_CARD: 'credit_card',
-    DEBIT_CARD: 'debit_card',
-    CASH: 'cash'
+    DEBITO: 'DEBITO',
+    CREDITO: 'CREDITO',
+    MERCADO_PAGO: 'MERCADO_PAGO'
 };
 
 const TAX_RATE = 0.21; // 21% IVA
@@ -19,50 +19,68 @@ class BillingService {
         this.collection = 'bills';
     }
 
-    async createBill(buyerName, productList, totalPrice, paymentMethod) {
-        await this.mongoService.connecting();
-        const collection = this.mongoService.getCollection(this.collection);
+    async createBill(userId, productList, totalPrice, paymentMethod) {
+        try {
+            await this.mongoService.connecting();
+            const collection = this.mongoService.getCollection(this.collection);
 
-        // Obtener el último ID para incrementar
-        const lastBill = await collection.findOne({}, { sort: { id: -1 } });
-        const newId = (lastBill?.id || 0) + 1;
+            // Validar método de pago
+            if (!Object.values(PaymentMethods).includes(paymentMethod)) {
+                throw new Error(`Método de pago inválido: ${paymentMethod}`);
+            }
 
-        // Calcular impuestos con mayor precisión
-        // Convertimos la tasa de impuesto a BigInt con 4 decimales de precisión
-        const TAX_RATE_BIGINT = BigInt(Math.floor(TAX_RATE * 10000));
-        // Multiplicamos primero por la tasa y luego dividimos para mantener la precisión
-        const taxAmount = (totalPrice * TAX_RATE_BIGINT) / 10000n;
-        const finalPrice = totalPrice + taxAmount;
+            // Calcular impuestos
+            const subtotalBigInt = BigInt(Math.round(totalPrice * 100));
+            const taxAmountBigInt = (subtotalBigInt * BigInt(Math.floor(TAX_RATE * 100))) / BigInt(100);
+            const finalPriceBigInt = subtotalBigInt + taxAmountBigInt;
 
-        const bill = {
-            id: newId,
-            buyerName,
-            products: productList.map(product => ({
-                id: product.id,
-                name: product.name,
-                price: product.price.toString() // Guardamos el precio en centavos como string
-            })),
-            subtotal: totalPrice.toString(),
-            taxes: taxAmount.toString(),
-            totalPrice: finalPrice.toString(),
-            paymentMethod,
-            date: new Date()
-        };
+            const bill = {
+                userId: userId,
+                products: productList.map(product => ({
+                    _id: product._id,
+                    name: product.name,
+                    price: product.price.toString(),
+                    quantity: product.quantity
+                })),
+                subtotal: (subtotalBigInt / BigInt(100)).toString(),
+                taxes: (taxAmountBigInt / BigInt(100)).toString(),
+                totalPrice: (finalPriceBigInt / BigInt(100)).toString(),
+                paymentMethod,
+                date: new Date()
+            };
 
-        await collection.insertOne(bill);
-        return {
-            ...bill,
-            products: bill.products.map(product => ({
-                ...product,
-                price: Number(product.price) / 100 // Convertir a formato decimal para la respuesta
-            }))
-        };
+            const result = await collection.insertOne(bill);
+
+            // Convertir los valores de vuelta a números para la respuesta
+            return {
+                _id: result.insertedId,
+                ...bill,
+                subtotal: parseFloat(bill.subtotal),
+                taxes: parseFloat(bill.taxes),
+                totalPrice: parseFloat(bill.totalPrice),
+                products: bill.products.map(product => ({
+                    ...product,
+                    price: parseFloat(product.price)
+                }))
+            };
+        } catch (error) {
+            console.error('Error en createBill:', error);
+            throw error;
+        }
     }
 
     async getBill(billId) {
-        await this.mongoService.connecting();
-        const collection = this.mongoService.getCollection(this.collection);
-        return await collection.findOne({ id: billId });
+        try {
+            await this.mongoService.connecting();
+            const collection = this.mongoService.getCollection(this.collection);
+            const bill = await collection.findOne({ _id: billId });
+            return bill;
+        } catch (error) {
+            console.error('Error obteniendo factura:', error);
+            throw error;
+        } finally {
+            await this.mongoService.disconnect();
+        }
     }
 
     async getAllBills() {

@@ -114,16 +114,35 @@ function productsView() {
 function cartView() {
     return `
         <div class="cart-container">
+            <h2>Carrito de Compras</h2>
             <div class="cart-content">
-                <h2>Carrito de Compras</h2>
-                <div id="cart-items" class="cart-items">
-                    <!-- Items del carrito se cargarán aquí -->
+                <div class="cart-items-section">
+                    <div id="cart-items" class="cart-items">
+                        <!-- Items del carrito se cargarán aquí -->
+                    </div>
                 </div>
-            </div>
-            <div class="cart-summary">
-                <h3>Resumen de la Compra</h3>
-                <div id="cart-totals">
-                    <!-- Totales se cargarán aquí -->
+                <div class="cart-summary">
+                    <h3>Resumen de la Compra</h3>
+                    <div id="cart-totals" class="cart-totals">
+                        <!-- Totales se cargarán aquí -->
+                    </div>
+                    <div class="payment-section">
+                        <div class="payment-method">
+                            <label>Medio de pago:</label>
+                            <select id="paymentMethod" class="payment-select">
+                                <option value="">Seleccione un medio de pago</option>
+                                <option value="DEBITO">Tarjeta de Débito</option>
+                                <option value="CREDITO">Tarjeta de Crédito</option>
+                                <option value="MERCADO_PAGO">Mercado Pago</option>
+                            </select>
+                        </div>
+                        <button 
+                            onclick="handleCheckout()"
+                            class="checkout-btn"
+                        >
+                            Finalizar Compra
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -224,11 +243,26 @@ async function addToCart(productId) {
         }
 
         const result = await response.json();
-        console.log('Producto agregado exitosamente:', result);
-        alert('Producto agregado al carrito');
+        console.log('Respuesta del servidor:', result);
+
+        if (result.success) {
+            alert(result.message || 'Producto agregado al carrito');
+            // Opcional: actualizar el contador del carrito si lo tienes
+            updateCartCount(result.cart.items.length);
+        } else {
+            throw new Error(result.error || 'Error al agregar al carrito');
+        }
     } catch (error) {
         console.error('Error detallado:', error);
         alert(error.message || 'Error al agregar al carrito');
+    }
+}
+
+// Función auxiliar para actualizar el contador del carrito (si lo tienes)
+function updateCartCount(count) {
+    const cartCountElement = document.querySelector('.cart-count');
+    if (cartCountElement) {
+        cartCountElement.textContent = count;
     }
 }
 
@@ -257,12 +291,17 @@ async function loadCart() {
             
             const cartItems = document.getElementById('cart-items');
             const cartTotals = document.getElementById('cart-totals');
-            
+            const checkoutButton = document.querySelector('.checkout-btn');
+
             if (!cartData.items || cartData.items.length === 0) {
                 cartItems.innerHTML = `
                     <p class="empty-cart">${cartData.message || 'Tu carrito está vacío'}</p>
                 `;
                 cartTotals.innerHTML = '';
+                // Deshabilitar el botón si el carrito está vacío
+                checkoutButton.disabled = true;
+                checkoutButton.classList.add('disabled');
+                checkoutButton.textContent = 'CARRITO VACÍO';
                 return;
             }
 
@@ -318,31 +357,21 @@ async function loadCart() {
             const subtotal = cartData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
             const tax = subtotal * TAX_RATE;
             const total = subtotal + tax;
-            
+
             cartTotals.innerHTML = `
-                <div class="cart-summary-details">
-                    <div class="summary-row">
-                        <span>Subtotal:</span>
-                        <span>$${subtotal.toFixed(2)}</span>
-                    </div>
-                    <div class="summary-row tax">
-                        <span>Impuestos (${(TAX_RATE * 100)}%):</span>
-                        <span>$${tax.toFixed(2)}</span>
-                    </div>
-                    <div class="summary-row total">
-                        <span>Total:</span>
-                        <span>$${total.toFixed(2)}</span>
-                    </div>
-                </div>
-                <button id="checkout-btn" class="checkout-btn">
-                    Proceder al pago
-                </button>
+                <p>Subtotal: $${subtotal.toFixed(2)}</p>
+                <p>Impuestos: $${tax.toFixed(2)}</p>
+                <p>Total: $${total.toFixed(2)}</p>
             `;
+
+            // Habilitar el botón si el carrito tiene elementos
+            checkoutButton.disabled = false;
+            checkoutButton.classList.remove('disabled');
+            checkoutButton.textContent = 'FINALIZAR COMPRA';
+
         } catch (error) {
-            console.error('Error al cargar el carrito:', error);
-            document.getElementById('cart-items').innerHTML = `
-                <p class="error">Error al cargar el carrito: ${error.message}</p>
-            `;
+            console.error('Error detallado al cargar carrito:', error);
+            alert(error.message || 'Error al cargar el carrito');
         }
     }
 }
@@ -416,6 +445,76 @@ async function handleRemoveAll(productId) {
     } catch (error) {
         console.error('Error:', error);
         alert(error.message);
+    }
+}
+
+async function handleCheckout() {
+    const paymentMethod = document.getElementById('paymentMethod').value;
+    
+    if (!paymentMethod) {
+        alert('Por favor seleccione un método de pago');
+        return;
+    }
+
+    try {
+        const token = localStorage.getItem('token');
+        const userId = localStorage.getItem('userId');
+
+        // Crear la factura
+        const response = await fetch(`${API_BASE_URL}/service/cart/checkout`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ 
+                paymentMethod
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.error || 'Error al procesar el pago');
+        }
+
+        // Generar y descargar PDF
+        if (result.bill) {
+            await generateAndDownloadPDF(result.bill);
+        }
+
+        // Mostrar mensaje de éxito
+        alert(result.message || '¡Gracias por su compra!');
+        
+        // Redirigir a la página principal
+        window.location.href = '/home';
+    } catch (error) {
+        console.error('Error en checkout:', error);
+        alert(error.message || 'Error al procesar la compra');
+    }
+}
+
+async function generateAndDownloadPDF(billData) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/service/bills/${billData.id}/pdf`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('token')}`
+            }
+        });
+
+        if (!response.ok) throw new Error('Error al generar PDF');
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `factura-${billData.id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        a.remove();
+    } catch (error) {
+        console.error('Error generando PDF:', error);
     }
 }
 

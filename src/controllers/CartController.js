@@ -34,7 +34,11 @@ class CartController {
             const result = await this.cartService.addToCart(userId, productId);
             console.log('Resultado de addToCart:', result);
             
-            res.status(200).json(result);
+            res.status(200).json({
+                success: true,
+                message: 'Producto agregado al carrito exitosamente',
+                cart: result
+            });
         } catch (error) {
             console.error('Error en addToCart:', error);
             next(error);
@@ -83,7 +87,7 @@ class CartController {
 
     async checkoutCart(req, res, next) {
         try {
-            const { userId } = req.params;
+            const userId = req.user.userId;
             const { paymentMethod } = req.body;
             
             if (!userId || !paymentMethod) {
@@ -92,16 +96,28 @@ class CartController {
                 });
             }
 
+            // Procesar el checkout
             const result = await this.cartService.checkoutCart(userId, paymentMethod);
 
-            // Verificar upgrade de categoría después de la compra
-            await this.userController.checkUpgrade(req, res, next);
+            try {
+                // Actualizar gastos del usuario y verificar upgrade
+                const total = parseFloat(result.totalPrice);
+                await this.userController.updateUserSpending(userId, total);
+                await this.userController.checkUpgradeLogic(userId);
 
-            res.status(200).json({
-                message: 'Compra realizada exitosamente',
-                ...result
-            });
+                res.status(200).json({
+                    message: 'Compra realizada exitosamente',
+                    bill: result
+                });
+            } catch (userError) {
+                console.error('Error actualizando usuario:', userError);
+                res.status(200).json({
+                    message: 'Compra realizada exitosamente, pero hubo un error actualizando el perfil del usuario',
+                    bill: result
+                });
+            }
         } catch (error) {
+            console.error('Error en checkout:', error);
             next(error);
         }
     }

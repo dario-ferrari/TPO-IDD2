@@ -1,0 +1,19 @@
+.checkout-btn {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.checkout-btn.disabled {
+    background-color: #e9ecef;
+    color: #6c757d;
+    cursor: not-allowed;
+    opacity: 0.65;
+}
+
+.checkout-btn:not(.disabled):hover {
+    background-color: #218838;
+} 

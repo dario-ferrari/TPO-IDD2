@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getCart, checkout } from '../services/api';
+import { getCart, checkout, getUserData } from '../services/api';
 import CartItem from '../components/CartItem';
 import { PaymentMethods, TAX_RATE } from '../constants';
 import { API_BASE_URL } from '../config';
@@ -20,17 +20,8 @@ const CartPage = () => {
                 throw new Error('No hay sesión activa');
             }
 
-            const response = await fetch(`${API_BASE_URL}/service/cart`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Error al cargar el carrito');
-            }
-
-            const data = await response.json();
+            const data = await getCart();
+            console.log('Cart data loaded:', data); // Debug
             setCartData(data);
             setError(null);
         } catch (error) {
@@ -113,7 +104,7 @@ const CartPage = () => {
 
     const calculateTotals = () => {
         const subtotal = cartData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
-        const tax = subtotal * 0.21; // TAX_RATE
+        const tax = subtotal * TAX_RATE;
         const total = subtotal + tax;
         return { subtotal, tax, total };
     };
@@ -127,14 +118,20 @@ const CartPage = () => {
         setLoading(true);
         try {
             await checkout(paymentMethod);
+            const updatedUserData = await getUserData();
+            localStorage.setItem('userCategory', updatedUserData.categoria);
+            localStorage.setItem('userName', updatedUserData.nombre);
+            
             alert('¡Gracias por su compra!');
-            navigate('/home');
+            navigate('/home', { state: { forceUpdate: true } });
         } catch (error) {
             alert('Error al procesar el pago');
         } finally {
             setLoading(false);
         }
     };
+
+    const cartIsEmpty = !cartData.items || cartData.items.length === 0;
 
     if (error) {
         return (
@@ -146,11 +143,28 @@ const CartPage = () => {
         );
     }
 
-    if (!cartData.items.length) {
+    if (cartIsEmpty) {
         return (
             <div className="cart-page">
                 <div className="cart-empty">
-                    <p>{cartData.message || 'Tu carrito está vacío'}</p>
+                    <h2>Tu Carrito</h2>
+                    <p className="empty-cart-message">{cartData.message || 'Tu carrito está vacío'}</p>
+                    <div className="cart-summary">
+                        <div className="payment-section">
+                            <select 
+                                className="payment-select disabled"
+                                disabled={true}
+                            >
+                                <option value="">Seleccione método de pago</option>
+                            </select>
+                            <button 
+                                className="checkout-btn disabled"
+                                disabled={true}
+                            >
+                                CARRITO VACÍO
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         );
@@ -168,7 +182,6 @@ const CartPage = () => {
                         item={item}
                         onIncrement={handleIncrement}
                         onDecrement={handleDecrement}
-                        onRemove={handleDecrement}
                         onRemoveAll={handleRemoveAll}
                     />
                 ))}
@@ -194,6 +207,7 @@ const CartPage = () => {
                         value={paymentMethod}
                         onChange={(e) => setPaymentMethod(e.target.value)}
                         className="payment-select"
+                        disabled={loading}
                     >
                         <option value="">Seleccione método de pago</option>
                         <option value={PaymentMethods.DEBITO}>Tarjeta de Débito</option>
@@ -201,11 +215,11 @@ const CartPage = () => {
                         <option value={PaymentMethods.MERCADO_PAGO}>Mercado Pago</option>
                     </select>
                     <button 
-                        className="checkout-btn"
+                        className={`checkout-btn ${cartIsEmpty || !paymentMethod ? 'disabled' : ''}`}
                         onClick={handleCheckout}
-                        disabled={!paymentMethod || loading}
+                        disabled={cartIsEmpty || !paymentMethod || loading}
                     >
-                        {loading ? 'Procesando...' : 'PAGAR'}
+                        {loading ? 'Procesando...' : 'FINALIZAR COMPRA'}
                     </button>
                 </div>
             </div>

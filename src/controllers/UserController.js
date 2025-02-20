@@ -42,30 +42,27 @@ class UserController {
                 });
             }
 
-            // Obtener el último ID para incrementar
-            const lastUser = await collection.findOne({}, { sort: { id: -1 } });
-            const newId = (lastUser?.id || 0) + 1;
-
             // Encriptar password
             const hashedPassword = await bcrypt.hash(password, 10);
 
             const newUser = {
-                id: newId,
                 username,
                 password: hashedPassword,
                 nombre,
-                cantidadGastos: 0n, // Usando BigInt para centavos, iniciando en 0
+                cantidadGastos: 0,
                 categoria: UserCategories.LOW
             };
 
-            await collection.insertOne(newUser);
+            const result = await collection.insertOne(newUser);
 
             res.status(201).json({
                 message: 'Usuario creado exitosamente',
                 user: {
-                    ...newUser,
-                    cantidadGastos: Number(newUser.cantidadGastos) / 100, // Convertir a formato decimal
-                    password: undefined
+                    _id: result.insertedId,
+                    username,
+                    nombre,
+                    cantidadGastos: 0,
+                    categoria: UserCategories.LOW
                 }
             });
         } catch (error) {
@@ -117,69 +114,77 @@ class UserController {
         }
     }
 
-    async checkUpgrade(req, res, next) {
+    async checkUpgradeEndpoint(req, res, next) {
         try {
-            // Corregir la obtención del ID del usuario - verificar múltiples fuentes
             const userId = parseInt(req.params.userId) || parseInt(req.body.userId) || parseInt(req.params.id);
-            
-            if (isNaN(userId)) {
-                return res.status(400).json({
-                    error: 'ID de usuario inválido o no proporcionado'
-                });
+            const result = await this.checkUpgradeLogic(userId);
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async checkUpgradeLogic(userId) {
+        try {
+            if (!userId) {
+                throw new Error('ID de usuario inválido o no proporcionado');
             }
 
             await this.mongoService.connecting();
             const collection = this.mongoService.getCollection(this.collection);
 
-            const user = await collection.findOne({ id: userId });
+            // Convertir el userId a ObjectId si es necesario
+            const { ObjectId } = require('mongodb');
+            const userObjectId = typeof userId === 'string' ? new ObjectId(userId) : userId;
+
+            const user = await collection.findOne({ _id: userObjectId });
             if (!user) {
-                return res.status(404).json({
-                    error: 'Usuario no encontrado'
-                });
+                throw new Error('Usuario no encontrado');
             }
 
             let newCategoria = user.categoria;
-            const gastosEnCentavos = BigInt(user.cantidadGastos);
+            const gastosEnCentavos = parseFloat(user.cantidadGastos || 0) * 100; // Convertir a centavos
 
-            if (gastosEnCentavos > BigInt(CATEGORY_LIMITS.TOP)) {
+            if (gastosEnCentavos > CATEGORY_LIMITS.TOP) {
                 newCategoria = UserCategories.TOP;
-            } else if (gastosEnCentavos > BigInt(CATEGORY_LIMITS.MEDIUM)) {
+            } else if (gastosEnCentavos > CATEGORY_LIMITS.MEDIUM) {
                 newCategoria = UserCategories.MEDIUM;
             }
 
             // Solo actualizar si la categoría cambió
             if (newCategoria !== user.categoria) {
                 await collection.updateOne(
-                    { id: userId },
+                    { _id: userObjectId },
                     { $set: { categoria: newCategoria } }
                 );
 
-                return res.status(200).json({
+                return {
                     message: 'Categoría actualizada',
                     oldCategoria: user.categoria,
                     newCategoria,
-                    cantidadGastos: Number(gastosEnCentavos) / 100 // Convertir a formato decimal
-                });
+                    cantidadGastos: gastosEnCentavos / 100
+                };
             }
 
-            res.status(200).json({
+            return {
                 message: 'No se requiere actualización de categoría',
                 categoria: user.categoria,
-                cantidadGastos: Number(gastosEnCentavos) / 100 // Convertir a formato decimal
-            });
-        } catch (error) {
-            next(error);
+                cantidadGastos: gastosEnCentavos / 100
+            };
+        } finally {
+            await this.mongoService.disconnect();
         }
     }
 
     async deleteUser(req, res, next) {
         try {
-            const userId = parseInt(req.params.id);
+            const { id } = req.params;
+            const { ObjectId } = require('mongodb');
 
             await this.mongoService.connecting();
             const collection = this.mongoService.getCollection(this.collection);
 
-            const result = await collection.deleteOne({ id: userId });
+            const result = await collection.deleteOne({ _id: new ObjectId(id) });
 
             if (result.deletedCount === 0) {
                 return res.status(404).json({
@@ -189,6 +194,71 @@ class UserController {
 
             res.status(200).json({
                 message: 'Usuario eliminado exitosamente'
+            });
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async updateUserSpending(userId, amount) {
+        try {
+            await this.mongoService.connecting();
+            const collection = this.mongoService.getCollection(this.collection);
+            
+            // Convertir el userId a ObjectId si es necesario
+            const { ObjectId } = require('mongodb');
+            const userObjectId = typeof userId === 'string' ? new ObjectId(userId) : userId;
+            
+            const user = await collection.findOne({ _id: userObjectId });
+            if (!user) {
+                console.error(`Usuario no encontrado para ID: ${userId}`);
+                throw new Error('Usuario no encontrado');
+            }
+
+            // Convertir el monto a número y asegurarse de que sea válido
+            const amountNumber = parseFloat(amount);
+            if (isNaN(amountNumber)) {
+                throw new Error('Monto inválido');
+            }
+
+            const currentSpending = parseFloat(user.cantidadGastos || 0);
+            const newSpending = currentSpending + amountNumber;
+
+            await collection.updateOne(
+                { _id: userObjectId },
+                { $set: { cantidadGastos: newSpending } }
+            );
+
+            console.log(`Gastos actualizados para usuario ${userId}: ${newSpending}`);
+            return newSpending;
+        } catch (error) {
+            console.error('Error actualizando gastos:', error);
+            throw error;
+        } finally {
+            await this.mongoService.disconnect();
+        }
+    }
+
+    async getUserData(req, res, next) {
+        try {
+            const userId = req.user.userId;
+            const { ObjectId } = require('mongodb');
+            const userObjectId = typeof userId === 'string' ? new ObjectId(userId) : userId;
+
+            await this.mongoService.connecting();
+            const collection = this.mongoService.getCollection(this.collection);
+            
+            const user = await collection.findOne({ _id: userObjectId });
+            
+            if (!user) {
+                return res.status(404).json({ error: 'Usuario no encontrado' });
+            }
+
+            res.json({
+                username: user.username,
+                nombre: user.nombre,
+                categoria: user.categoria,
+                cantidadGastos: user.cantidadGastos
             });
         } catch (error) {
             next(error);

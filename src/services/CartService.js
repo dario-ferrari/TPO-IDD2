@@ -237,6 +237,70 @@ class CartService {
             productCount: productDetails.length
         };
     }
+
+    async incrementItem(userId, productId) {
+        try {
+            const cartKey = `cart:${userId}`;
+            await this.cacheService.connect();
+            
+            let currentQuantity = await this.cacheService.client.hGet(cartKey, productId.toString()) || 0;
+            currentQuantity = parseInt(currentQuantity);
+            
+            await this.cacheService.client.hSet(cartKey, productId.toString(), (currentQuantity + 1).toString());
+            
+            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const formattedCart = await this.formatCart(userId, cartItems);
+            
+            await this.cacheService.disconnect();
+            return formattedCart;
+        } catch (error) {
+            console.error('Error en incrementItem:', error);
+            throw error;
+        }
+    }
+
+    async decrementItem(userId, productId) {
+        try {
+            const cartKey = `cart:${userId}`;
+            await this.cacheService.connect();
+            
+            let currentQuantity = await this.cacheService.client.hGet(cartKey, productId.toString()) || 0;
+            currentQuantity = parseInt(currentQuantity);
+            
+            if (currentQuantity <= 1) {
+                await this.cacheService.client.hDel(cartKey, productId.toString());
+            } else {
+                await this.cacheService.client.hSet(cartKey, productId.toString(), (currentQuantity - 1).toString());
+            }
+            
+            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const formattedCart = await this.formatCart(userId, cartItems);
+            
+            await this.cacheService.disconnect();
+            return formattedCart;
+        } catch (error) {
+            console.error('Error en decrementItem:', error);
+            throw error;
+        }
+    }
+
+    async removeAllItems(userId, productId) {
+        try {
+            const cartKey = `cart:${userId}`;
+            await this.cacheService.connect();
+            
+            await this.cacheService.client.hDel(cartKey, productId.toString());
+            
+            const cartItems = await this.cacheService.client.hGetAll(cartKey);
+            const formattedCart = await this.formatCart(userId, cartItems);
+            
+            await this.cacheService.disconnect();
+            return formattedCart;
+        } catch (error) {
+            console.error('Error en removeAllItems:', error);
+            throw error;
+        }
+    }
 }
 
 module.exports = CartService; 

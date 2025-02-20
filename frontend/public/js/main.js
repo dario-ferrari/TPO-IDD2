@@ -266,19 +266,50 @@ async function loadCart() {
                 return;
             }
 
-            // Renderizar items
+            // Renderizar items con los botones de control
             cartItems.innerHTML = cartData.items.map(item => `
                 <div class="cart-item">
                     <div class="cart-item-image">
                         <img src="${item.image || '/images/placeholder.jpg'}" alt="${item.name}">
                     </div>
                     <div class="cart-item-details">
-                        <h3>${item.name}</h3>
-                        <p class="item-quantity">Cantidad: ${item.quantity}</p>
+                        <div class="item-info">
+                            <h3>${item.name}</h3>
+                            <p class="cart-item-price">$${item.price.toFixed(2)}</p>
+                        </div>
+                        <div class="cart-item-actions">
+                            <div class="quantity-controls">
+                                ${item.quantity > 1 ? `
+                                    <button 
+                                        class="quantity-btn"
+                                        onclick="handleDecrement(${item.productId})"
+                                        title="Reducir cantidad"
+                                    >
+                                        -
+                                    </button>
+                                ` : ''}
+                                <span class="quantity">${item.quantity}</span>
+                                <button 
+                                    class="quantity-btn"
+                                    onclick="handleIncrement(${item.productId})"
+                                    title="Aumentar cantidad"
+                                >
+                                    +
+                                </button>
+                            </div>
+                            <button 
+                                class="remove-btn"
+                                onclick="${item.quantity > 1 ? 
+                                    `handleRemoveAll(${item.productId})` : 
+                                    `handleDecrement(${item.productId})`}"
+                                title="${item.quantity > 1 ? 'Eliminar todos' : 'Eliminar del carrito'}"
+                            >
+                                🗑️
+                            </button>
+                        </div>
                     </div>
-                    <div class="cart-item-price">
-                        <p>$${item.price.toFixed(2)}</p>
-                        <p class="item-subtotal">Subtotal: $${(item.price * item.quantity).toFixed(2)}</p>
+                    <div class="item-subtotal">
+                        <p>Subtotal: $${(item.price * item.quantity).toFixed(2)}</p>
                     </div>
                 </div>
             `).join('');
@@ -313,6 +344,78 @@ async function loadCart() {
                 <p class="error">Error al cargar el carrito: ${error.message}</p>
             `;
         }
+    }
+}
+
+async function handleIncrement(productId) {
+    try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE_URL}/service/cart/increment`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ productId })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al incrementar cantidad');
+        }
+
+        // Recargar el carrito para mostrar los cambios
+        loadCart();
+    } catch (error) {
+        console.error('Error:', error);
+        alert(error.message);
+    }
+}
+
+async function handleDecrement(productId) {
+    try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE_URL}/service/cart/decrement`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ productId })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al decrementar cantidad');
+        }
+
+        // Recargar el carrito para mostrar los cambios
+        loadCart();
+    } catch (error) {
+        console.error('Error:', error);
+        alert(error.message);
+    }
+}
+
+async function handleRemoveAll(productId) {
+    try {
+        const token = localStorage.getItem('token');
+        const response = await fetch(`${API_BASE_URL}/service/cart/remove-all`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ productId })
+        });
+
+        if (!response.ok) {
+            throw new Error('Error al eliminar producto');
+        }
+
+        // Recargar el carrito para mostrar los cambios
+        loadCart();
+    } catch (error) {
+        console.error('Error:', error);
+        alert(error.message);
     }
 }
 

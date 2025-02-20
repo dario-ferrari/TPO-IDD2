@@ -3,33 +3,119 @@ import { useNavigate } from 'react-router-dom';
 import { getCart, checkout } from '../services/api';
 import CartItem from '../components/CartItem';
 import { PaymentMethods, TAX_RATE } from '../constants';
+import { API_BASE_URL } from '../config';
 import './CartPage.css';
 
 const CartPage = () => {
-    const [cartItems, setCartItems] = useState([]);
+    const [cartData, setCartData] = useState({ items: [] });
+    const [error, setError] = useState(null);
     const [paymentMethod, setPaymentMethod] = useState('');
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
-    useEffect(() => {
-        fetchCartItems();
-    }, []);
-
-    const fetchCartItems = async () => {
+    const loadCart = async () => {
         try {
-            const data = await getCart();
-            setCartItems(data);
+            const token = localStorage.getItem('token');
+            if (!token) {
+                throw new Error('No hay sesión activa');
+            }
+
+            const response = await fetch(`${API_BASE_URL}/service/cart`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Error al cargar el carrito');
+            }
+
+            const data = await response.json();
+            setCartData(data);
+            setError(null);
         } catch (error) {
-            console.error('Error fetching cart:', error);
+            setError(error.message);
         }
     };
 
-    const calculateSubtotal = () => {
-        return cartItems.reduce((sum, item) => sum + item.price, 0);
+    const handleIncrement = async (productId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/service/cart/increment`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ productId })
+            });
+
+            if (!response.ok) {
+                throw new Error('Error al incrementar cantidad');
+            }
+
+            const updatedCart = await response.json();
+            setCartData(updatedCart);
+        } catch (error) {
+            setError(error.message);
+        }
     };
 
-    const calculateTaxes = (subtotal) => {
-        return subtotal * TAX_RATE;
+    const handleDecrement = async (productId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/service/cart/decrement`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ productId })
+            });
+
+            if (!response.ok) {
+                throw new Error('Error al decrementar cantidad');
+            }
+
+            const updatedCart = await response.json();
+            setCartData(updatedCart);
+        } catch (error) {
+            setError(error.message);
+        }
+    };
+
+    const handleRemoveAll = async (productId) => {
+        try {
+            const token = localStorage.getItem('token');
+            const response = await fetch(`${API_BASE_URL}/service/cart/remove-all`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ productId })
+            });
+
+            if (!response.ok) {
+                throw new Error('Error al eliminar producto');
+            }
+
+            const updatedCart = await response.json();
+            setCartData(updatedCart);
+        } catch (error) {
+            setError(error.message);
+        }
+    };
+
+    useEffect(() => {
+        loadCart();
+    }, []);
+
+    const calculateTotals = () => {
+        const subtotal = cartData.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+        const tax = subtotal * 0.21; // TAX_RATE
+        const total = subtotal + tax;
+        return { subtotal, tax, total };
     };
 
     const handleCheckout = async () => {
@@ -50,27 +136,53 @@ const CartPage = () => {
         }
     };
 
-    const subtotal = calculateSubtotal();
-    const taxes = calculateTaxes(subtotal);
-    const total = subtotal + taxes;
+    if (error) {
+        return (
+            <div className="cart-page">
+                <div className="cart-error">
+                    <p>{error}</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!cartData.items.length) {
+        return (
+            <div className="cart-page">
+                <div className="cart-empty">
+                    <p>{cartData.message || 'Tu carrito está vacío'}</p>
+                </div>
+            </div>
+        );
+    }
+
+    const { subtotal, tax, total } = calculateTotals();
 
     return (
         <div className="cart-page">
             <div className="cart-items">
                 <h2>Tu Carrito</h2>
-                {cartItems.map(item => (
-                    <CartItem key={item.id} item={item} />
+                {cartData.items.map(item => (
+                    <CartItem
+                        key={item.productId}
+                        item={item}
+                        onIncrement={handleIncrement}
+                        onDecrement={handleDecrement}
+                        onRemove={handleDecrement}
+                        onRemoveAll={handleRemoveAll}
+                    />
                 ))}
             </div>
             <div className="cart-summary">
+                <h3>Resumen del Carrito</h3>
                 <div className="price-details">
                     <div className="subtotal">
                         <span>Subtotal:</span>
                         <span>${subtotal.toFixed(2)}</span>
                     </div>
                     <div className="taxes">
-                        <span>Impuestos ({(TAX_RATE * 100)}%):</span>
-                        <span>${taxes.toFixed(2)}</span>
+                        <span>Impuestos (21%):</span>
+                        <span>${tax.toFixed(2)}</span>
                     </div>
                     <div className="total">
                         <span>Total:</span>

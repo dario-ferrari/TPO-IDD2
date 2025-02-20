@@ -105,6 +105,60 @@ class CartController {
             next(error);
         }
     }
+
+    async incrementItem(req, res, next) {
+        try {
+            const userId = req.user.userId;
+            const { productId } = req.body;
+            
+            if (!userId || !productId) {
+                return res.status(400).json({
+                    error: 'userId y productId son requeridos'
+                });
+            }
+
+            const result = await this.cartService.incrementItem(userId, productId);
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async decrementItem(req, res, next) {
+        try {
+            const userId = req.user.userId;
+            const { productId } = req.body;
+            
+            if (!userId || !productId) {
+                return res.status(400).json({
+                    error: 'userId y productId son requeridos'
+                });
+            }
+
+            const result = await this.cartService.decrementItem(userId, productId);
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
+
+    async removeAllItems(req, res, next) {
+        try {
+            const userId = req.user.userId;
+            const { productId } = req.body;
+            
+            if (!userId || !productId) {
+                return res.status(400).json({
+                    error: 'userId y productId son requeridos'
+                });
+            }
+
+            const result = await this.cartService.removeAllItems(userId, productId);
+            res.status(200).json(result);
+        } catch (error) {
+            next(error);
+        }
+    }
 }
 
 module.exports = CartController; 

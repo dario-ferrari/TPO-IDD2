@@ -17,13 +17,18 @@ class ErrorMiddleware {
         
         const status = err.status || 500;
         res.status(status).json({
+            error: true,
             message: err.message,
             stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
         });
     }
     
     invalidPathHandler(req, res, next) {
-        res.redirect('/rutaerror')//redirige a --- en caso de ruta no válida.
+        // En lugar de redirigir, enviamos un error 404
+        res.status(404).json({
+            error: true,
+            message: 'Ruta no encontrada'
+        });
     }
 }
 
